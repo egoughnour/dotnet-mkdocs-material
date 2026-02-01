@@ -1,7 +1,6 @@
 name: dotnet-mkdocs-material
 description: >
-  Build .NET project (triggering MkDocsSharp.MDGen markdown generation), then build MkDocs Material site.
-  Assumes docs/ exists and generates mkdocs.yml with sensible defaults if missing.
+  Build .NET project and MkDocs Material site. Assumes docs/ directory exists.
 author: Erik Goughnour
 branding:
   icon: book
