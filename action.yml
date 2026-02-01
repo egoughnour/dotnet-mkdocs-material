@@ -1,0 +1,111 @@
+name: dotnet-mkdocs-material
+description: >
+  Build .NET project (triggering MkDocsSharp.MDGen markdown generation), then build MkDocs Material site.
+  Assumes docs/ exists and generates mkdocs.yml with sensible defaults if missing.
+author: Erik Goughnour
+branding:
+  icon: book
+  color: blue
+
+inputs:
+  dotnet_version:
+    description: ".NET SDK version to install."
+    required: false
+    default: "8.0.x"
+
+  python_version:
+    description: "Python version for MkDocs."
+    required: false
+    default: "3.12"
+
+  configuration:
+    description: ".NET build configuration."
+    required: false
+    default: "Release"
+
+  site_name:
+    description: "Site name for generated mkdocs.yml (ignored if mkdocs.yml exists)."
+    required: false
+    default: "API Documentation"
+
+  strict:
+    description: "If true, run mkdocs build with --strict."
+    required: false
+    default: "false"
+
+  dotnet_build_args:
+    description: "Extra args appended to dotnet build."
+    required: false
+    default: ""
+
+  mkdocs_build_args:
+    description: "Extra args appended to mkdocs build."
+    required: false
+    default: ""
+
+outputs:
+  site_dir:
+    description: "Path to the built site directory."
+    value: site
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet_version }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: dotnet build (triggers MkDocsSharp.MDGen)
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::dotnet build"
+        dotnet build -c "${{ inputs.configuration }}" ${{ inputs.dotnet_build_args }}
+        echo "::endgroup::"
+
+    - name: Ensure mkdocs.yml exists
+      shell: bash
+      run: |
+        if [ ! -f mkdocs.yml ]; then
+          echo "::notice::No mkdocs.yml found. Generating default configuration."
+          cat > mkdocs.yml <<'EOF'
+        site_name: ${{ inputs.site_name }}
+        docs_dir: docs
+        site_dir: site
+        theme:
+          name: material
+        EOF
+        fi
+
+    - name: Install MkDocs
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::pip install"
+        python -m pip install --upgrade pip
+        if [ -f docs/requirements.txt ]; then
+          pip install -r docs/requirements.txt
+        else
+          echo "::notice::No docs/requirements.txt found. Installing mkdocs-material."
+          pip install mkdocs-material==9.5.18
+        fi
+        echo "::endgroup::"
+
+    - name: Build MkDocs site
+      shell: bash
+      run: |
+        set -euo pipefail
+        STRICT_FLAG=""
+        if [ "${{ inputs.strict }}" = "true" ]; then
+          STRICT_FLAG="--strict"
+        fi
+        echo "::group::mkdocs build"
+        mkdocs build --clean $STRICT_FLAG ${{ inputs.mkdocs_build_args }}
+        echo "::endgroup::"
+        echo "::notice::Site built at: site/"
