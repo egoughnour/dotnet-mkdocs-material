@@ -21,7 +21,7 @@ Your .NET project needs:
 </PropertyGroup>
 
 <ItemGroup>
-  <PackageReference Include="MkDocsSharp.MDGen" Version="1.6.0" />
+  <PackageReference Include="MkDocsSharp.MDGen" Version="2.1.0" />
 </ItemGroup>
 ```
 
