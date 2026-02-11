@@ -100,7 +100,9 @@ runs:
             echo "::group::dotnet build ${proj} → ${output_dir}/"
             dotnet build "$proj" \
               -c "${{ inputs.configuration }}" \
-              -p:OutputFile="${output_dir}/index.md" \
+              -p:MkDocsDocumentationPath="${output_dir}" \
+              -p:MkDocsOutputFile="${output_dir}/index.md" \
+              -p:MkDocsMergeFiles=false \
               ${{ inputs.dotnet_build_args }}
             echo "::endgroup::"
             echo "::notice::Generated docs: ${proj} → ${output_dir}/"
