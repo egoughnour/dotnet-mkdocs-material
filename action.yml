@@ -94,7 +94,7 @@ runs:
 
             # Derive subdir from project filename: ComplexityAnalysis.Core.csproj → complexityanalysis-core
             proj_name=$(basename "$proj" .csproj | tr '.' '-' | tr '[:upper:]' '[:lower:]')
-            output_dir="docs/api/${proj_name}"
+            output_dir="${GITHUB_WORKSPACE}/docs/api/${proj_name}"
             mkdir -p "$output_dir"
 
             echo "::group::dotnet build ${proj} → ${output_dir}/"
