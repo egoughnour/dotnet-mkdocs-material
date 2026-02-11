@@ -1,6 +1,7 @@
 name: dotnet-mkdocs-material
 description: >
-  Build .NET project and MkDocs Material site. Assumes docs/ directory exists.
+  Build .NET project(s) and MkDocs Material site.
+  Supports multi-project targeting with per-project docs output.
 author: Erik Goughnour
 branding:
   icon: book
@@ -22,6 +23,14 @@ inputs:
     required: false
     default: "Release"
 
+  projects:
+    description: |
+      Newline-separated list of .NET project paths to build.
+      Each project generates docs into docs/api/<project-name>/.
+      Leave empty to build the repository root (original single-project behavior).
+    required: false
+    default: ""
+
   site_name:
     description: "Site name for generated mkdocs.yml (ignored if mkdocs.yml exists)."
     required: false
@@ -31,6 +40,11 @@ inputs:
     description: "If true, run mkdocs build with --strict."
     required: false
     default: "false"
+
+  build_site:
+    description: "If true, run mkdocs build. Set to false to only generate markdown (useful when RTD handles the build)."
+    required: false
+    default: "true"
 
   dotnet_build_args:
     description: "Extra args appended to dotnet build."
@@ -44,8 +58,11 @@ inputs:
 
 outputs:
   site_dir:
-    description: "Path to the built site directory."
-    value: site
+    description: "Path to the built site directory (empty when build_site is false)."
+    value: ${{ inputs.build_site == 'true' && 'site' || '' }}
+  docs_dir:
+    description: "Path to the docs directory containing generated markdown."
+    value: docs
 
 runs:
   using: composite
@@ -60,29 +77,83 @@ runs:
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: dotnet build (triggers MkDocsSharp.MDGen)
+    - name: Build .NET project(s)
       shell: bash
       run: |
         set -euo pipefail
-        echo "::group::dotnet build"
-        dotnet build -c "${{ inputs.configuration }}" ${{ inputs.dotnet_build_args }}
-        echo "::endgroup::"
+        PROJECTS="${{ inputs.projects }}"
 
-    - name: Ensure mkdocs.yml exists
+        if [ -z "$PROJECTS" ]; then
+          echo "::group::dotnet build (single project)"
+          dotnet build -c "${{ inputs.configuration }}" ${{ inputs.dotnet_build_args }}
+          echo "::endgroup::"
+        else
+          echo "$PROJECTS" | while IFS= read -r proj; do
+            proj=$(echo "$proj" | xargs)
+            [ -z "$proj" ] && continue
+
+            # Derive subdir from project filename: ComplexityAnalysis.Core.csproj → complexityanalysis-core
+            proj_name=$(basename "$proj" .csproj | tr '.' '-' | tr '[:upper:]' '[:lower:]')
+            output_dir="docs/api/${proj_name}"
+            mkdir -p "$output_dir"
+
+            echo "::group::dotnet build ${proj} → ${output_dir}/"
+            dotnet build "$proj" \
+              -c "${{ inputs.configuration }}" \
+              -p:OutputFile="${output_dir}/index.md" \
+              ${{ inputs.dotnet_build_args }}
+            echo "::endgroup::"
+            echo "::notice::Generated docs: ${proj} → ${output_dir}/"
+          done
+        fi
+
+    - name: Generate mkdocs.yml if missing
       shell: bash
       run: |
-        if [ ! -f mkdocs.yml ]; then
-          echo "::notice::No mkdocs.yml found. Generating default configuration."
-          cat > mkdocs.yml <<'EOF'
-        site_name: ${{ inputs.site_name }}
+        [ -f mkdocs.yml ] && exit 0
+
+        echo "::notice::No mkdocs.yml found — generating default."
+        PROJECTS="${{ inputs.projects }}"
+
+        if [ -z "$PROJECTS" ]; then
+          cat > mkdocs.yml <<YAML
+        site_name: "${{ inputs.site_name }}"
         docs_dir: docs
         site_dir: site
         theme:
           name: material
-        EOF
+        YAML
+        else
+          {
+            echo 'site_name: "${{ inputs.site_name }}"'
+            echo "docs_dir: docs"
+            echo "site_dir: site"
+            echo ""
+            echo "theme:"
+            echo "  name: material"
+            echo "  palette:"
+            echo "    - scheme: default"
+            echo "      primary: indigo"
+            echo ""
+            echo "plugins:"
+            echo "  - search"
+            echo ""
+            echo "nav:"
+            echo "  - Home: index.md"
+            echo "  - API Reference:"
+
+            echo "$PROJECTS" | while IFS= read -r proj; do
+              proj=$(echo "$proj" | xargs)
+              [ -z "$proj" ] && continue
+              proj_name=$(basename "$proj" .csproj | tr '.' '-' | tr '[:upper:]' '[:lower:]')
+              # Display name: last segment after final dot
+              display=$(basename "$proj" .csproj | sed 's/.*\.//')
+              echo "      - ${display}: api/${proj_name}/index.md"
+            done
+          } > mkdocs.yml
         fi
 
-    - name: Install MkDocs
+    - name: Install MkDocs dependencies
       shell: bash
       run: |
         set -euo pipefail
@@ -90,13 +161,16 @@ runs:
         python -m pip install --upgrade pip
         if [ -f docs/requirements.txt ]; then
           pip install -r docs/requirements.txt
+        elif [ -f requirements.txt ]; then
+          pip install -r requirements.txt
         else
-          echo "::notice::No docs/requirements.txt found. Installing mkdocs-material."
+          echo "::notice::No requirements.txt found — installing mkdocs-material."
           pip install mkdocs-material==9.5.18
         fi
         echo "::endgroup::"
 
     - name: Build MkDocs site
+      if: ${{ inputs.build_site == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
