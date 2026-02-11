@@ -102,7 +102,7 @@ runs:
               -c "${{ inputs.configuration }}" \
               -p:MkDocsDocumentationPath="${output_dir}" \
               -p:MkDocsOutputFile="${output_dir}/index.md" \
-              -p:MkDocsMergeFiles=false \
+              -p:MkDocsMergeFiles=true \
               ${{ inputs.dotnet_build_args }}
             echo "::endgroup::"
             echo "::notice::Generated docs: ${proj} → ${output_dir}/"
